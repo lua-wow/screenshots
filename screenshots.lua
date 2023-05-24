@@ -1,5 +1,5 @@
 local _, ns = ...
-local ScreenShots = ns.screenshots
+local ScreenShots = ns.ScreenShots
 local Config = ScreenShots.Config
 
 if (not Config.Enable) then return end

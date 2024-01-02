@@ -1,6 +1,6 @@
 ## Interface: 20504
 ## Author: Luaerror
-## Version: 1.0
+## Version: 1.0.0
 ## Title: |cffb3ff19ScreenShots - TBC|r
 ## Notes: Auto screenshot game events and achievements
 ## Website: https://github.com/pedrozc90/screenshots

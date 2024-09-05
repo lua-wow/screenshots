@@ -1,0 +1,11 @@
+## Interface: 11503, 20504, 30403, 40400, 100200, 110002
+## Author: Luaerror
+## Version: 1.0.0
+## Title: |cffff8000ScreenShots|r
+## Notes: Auto screenshot game events and achievements
+## IconTexture: Interface\ICONS\Inv_misc_-selfiecamera_01
+
+## X-Website: https://github.com/wow-lua/screenshots
+## X-Maintainer: Luaerror
+
+screenshots.lua

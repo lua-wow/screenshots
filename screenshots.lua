@@ -1,8 +1,4 @@
 local _, ns = ...
-local ScreenShots = ns.ScreenShots
-local Config = ScreenShots.Config
-
-if (not Config.Enable) then return end
 
 -- Blizzard
 local Screenshot = _G.Screenshot
@@ -10,33 +6,40 @@ local IsInInstance = _G.IsInInstance
 local GetAchievementInfo = _G.GetAchievementInfo
 local GetDifficultyInfo = _G.GetDifficultyInfo
 
-----------------------------------------------------------------
--- Achievement ScreenShot by Blamdarot
-----------------------------------------------------------------
+local isRetail = (WOW_PROJECT_ID == WOW_PROJECT_MAINLINE)
+local isClassic = (WOW_PROJECT_ID == WOW_PROJECT_CLASSIC)
+local isTBC = (WOW_PROJECT_ID == WOW_PROJECT_BURNING_CRUSADE_CLASSIC)
+local isWrath = (WOW_PROJECT_ID == WOW_PROJECT_WRATH_CLASSIC)
+local isCata = (WOW_PROJECT_ID == WOW_PROJECT_CATACLYSM_CLASSIC)
+
+-- Mine
+local isInit = false
+
 local EncounterDifficulty = {
-    -- Dungeon
-    [1] = false,            -- Normal
-    [2] = false,            -- Heroic
+    [1] = false,            -- Dungeon Normal
+    [2] = false,            -- Dungeon Heroic
+    [3] = false,            -- Raid Normal 10-man
+    [4] = false,            -- Raid Normal 25-man
+    [5] = true,             -- Raid Heroic 10-man
+    [6] = true,             -- Raid Heroic 25-man
+    [7] = false,            -- Looking For Raid
     [8] = true,             -- Mythic Keystone
-    [23] = true,            -- Muthic (Dungeon)
-    -- Raid
-    [3] = false,            -- Normal 10-man
-    [4] = false,            -- Normal 25-man
-    [5] = true,             -- Heroic 10-man
-    [6] = true,             -- Heroic 25-man
-    [14] = true,            -- Normal
-    [15] = true,            -- Heroic
-    [16] = true,            -- Mythic
+    [9] = true,             -- Raid 40-man
+    [14] = true,            -- Raid Normal
+    [15] = true,            -- Raid Heroic
+    [16] = true,            -- Raid Mythic
+    [17] = false,           -- Looking For Raid
+    [23] = true,            -- Dungeon Muthic
+    [172] = true,           -- World Boss
 }
 
 local ZoneTypes = {
-    ["none"] = false,                           -- when outside an instance
-    ["pvp"] = false,                            -- when in a battleground
-    ["arena"] = false,                          -- when in an arena
-    ["party"]= true,                            -- when in a 5-man instance
-    ["raid"] = true,                            -- when in a raid instance
-    ["scenario"] = false,                       -- when in a scenario
-    -- nil when in an unknown kind of instance
+    ["none"] = false,       -- when outside an instance
+    ["pvp"] = false,        -- when in a battleground
+    ["arena"] = false,      -- when in an arena
+    ["party"]= true,        -- when in a 5-man instance
+    ["raid"] = true,        -- when in a raid instance
+    ["scenario"] = false,   -- when in a scenario
 }
 
 ----------------------------------------------------------------
@@ -81,58 +84,74 @@ local function Wait(delay, func, ...)
     return true
 end
 
--- return a formatted time string.
-local function GetEncounterTime(ElapsedTimer)
-    local minutes = math.ceil(ElapsedTimer / 60)
-    local seconds = math.ceil(ElapsedTimer % 60)
-    return string.format("%d minutes %d seconds", minutes, seconds)
-end
-
-local function Print(...)
-    print("|cff00FF96ScreenShots|r: ", ...)
-end
-
-local function Debug(...)
-    print("|cffB04F4FScreenShots WARNING: |r", ...)
-end
-
 ----------------------------------------------------------------
--- Event Handlers
+-- Screen Shots
 ----------------------------------------------------------------
--- local f = CreateFrame("Frame")
-ScreenShots:RegisterEvent("PLAYER_LOGIN")
-ScreenShots:SetScript("OnEvent", function(self, event, ...)
-    -- call one of the event handlers
+local element_proto = {
+    cfg = {
+        ["enabled"] = true,             -- enables plugin.
+        ["achievements"] = true,        -- enables screenshots of earned achievements.
+        ["boss_kills"] = false,         -- enables screenshots of successful boss encounters.
+        ["challenge_mode"] = true,      -- enables screenshots of successful challenge modes / mythic keys.
+        ["levelup"] = true,             -- enables screenshots when player level up.
+        ["dead"] = false,               -- enables screenshots when player dies.
+        ["messages"] = false,           -- print messages when a screenshot event is triggered.
+    }
+}
+
+function element_proto:Configure(value)
+    self.cfg = Mixin(self.cfg or {}, value or {})
+    if isInit then
+        self:Update()
+    end
+end
+
+function element_proto:Update()
+    if self.cfg.enabled then
+        if self.cfg.boss_kills then
+            self:RegisterEvent("PLAYER_ENTERING_WORLD")
+        end
+    
+        if self.cfg.achievements then
+            self:RegisterEvent("ACHIEVEMENT_EARNED")
+        end
+    
+        if self.cfg.challenge_mode then
+            self:RegisterEvent("CHALLENGE_MODE_COMPLETED")
+        end
+    
+        if self.cfg.levelup then
+            self:RegisterEvent("PLAYER_LEVEL_UP")
+        end
+
+        if self.cfg.dead then
+            self:RegisterEvent("PLAYER_DEAD")
+        end
+    
+        if self.cfg.messages then
+            self:RegisterEvent("SCREENSHOT_FAILED")
+            self:RegisterEvent("SCREENSHOT_SUCCEEDED")
+        end
+    
+        self:UnregisterEvent("PLAYER_LOGIN")
+    else
+        self:UnregisterAllEvents()
+    end
+end
+
+function element_proto:OnEvent(event, ...)
+    -- call an event handler
     self[event](self, ...)
-end)
+end
 
--- register events defined at configuration file
-function ScreenShots:PLAYER_LOGIN()
-    if (Config.Messages) then
-        self:RegisterEvent("SCREENSHOT_FAILED")
-        self:RegisterEvent("SCREENSHOT_SUCCEEDED")
-    end
-
-    if (Config.Achievements) then
-        self:RegisterEvent("ACHIEVEMENT_EARNED")
-    end
-
-    if (Config.ChallengeMode) then
-        self:RegisterEvent("CHALLENGE_MODE_COMPLETED")
-    end
-
-    if (Config.LevelUp) then
-        self:RegisterEvent("PLAYER_LEVEL_UP")
-    end
-
-    -- self.EncounterStartTimer = 0
-    -- self.EncounterElapsedTimer = 0
-    if (Config.BossKills) then
-        self:RegisterEvent("PLAYER_ENTERING_WORLD")
+function element_proto:PLAYER_LOGIN()
+    if not isInit then
+        self:Update()
+        isInit = true
     end
 end
 
-function ScreenShots:PLAYER_ENTERING_WORLD()
+function element_proto:PLAYER_ENTERING_WORLD()
     local inInstance, instanceType = IsInInstance()
     local isRegistered = self:IsEventRegistered("BOSS_KILL")
 
@@ -149,75 +168,89 @@ function ScreenShots:PLAYER_ENTERING_WORLD()
     end
 end
 
-function ScreenShots:SCREENSHOT_FAILED(...)
-    Debug("ScreenShot Failed")
-end
-
-function ScreenShots:SCREENSHOT_SUCCEEDED(...)
-    Print("ScreenShot Taken")
-end
-
-function ScreenShots:ACHIEVEMENT_EARNED(...)
-    local achievementID, arg2 = ...
+function element_proto:ACHIEVEMENT_EARNED(achievementID, alreadyEarned)
     local id, name, points, completed, month, day, year, description, flags,
-        icon, rewardText, isGuild, wasEarnedByMe, earnedBy = GetAchievementInfo(achievementID)
+    icon, rewardText, isGuild, wasEarnedByMe, earnedBy, isStatistic = GetAchievementInfo(achievementID)
 
     -- delay 1 sec to wait achievement warning to show.
     Wait(1, Screenshot)
 end
 
-function ScreenShots:BOSS_KILL(...)
-    local bossID, bossName = ...
-
-    if (bossName) then
-        -- display bos
-        if (Config.Messages) then
-            Print("Boss Killed:", bossName)
-        end
-        -- delay 1 sec before take screenshot.
-        Wait(1, Screenshot)
+function element_proto:BOSS_KILL(encounterID, encounterName)
+    if encounterName then
+        self:Message(string.format("Boss killed: %s", encounterName))
     end
+
+    -- delay 1 sec before take screenshot.
+    Wait(1, Screenshot)
 end
 
-function ScreenShots:CHALLENGE_MODE_COMPLETED()
+function element_proto:CHALLENGE_MODE_COMPLETED()
     -- delay 1 sec to wait the right moment.
     Wait(1, Screenshot)
 end
 
-function ScreenShots:ENCOUNTER_START(...)
-    local encounterID, encounterName, difficultyID, groupSize = ...
-
+function element_proto:ENCOUNTER_START(encounterID, encounterName, difficultyID, groupSize)
     -- record encounter start time
-    self.EncounterStartTimer = time()
+    self.encounterStartTimer = time()
 end
 
-function ScreenShots:ENCOUNTER_END(...)
-    local ecounterID, encounterName, difficultyID, groupSize, sucess = ...
-    local difficulty, groupType = GetDifficultyInfo(difficultyID)
-
+function element_proto:ENCOUNTER_END(encounterID, encounterName, difficultyID, groupSize, success)
     -- calculate total time until encounter wipe/success
-    self.EncounterElapsedTimer = time() - self.EncounterStartTimer
+    local elapsed = time() - self.encounterStartTimer
+    local encounterTime = self:GetEncounterTime(elapsed)
 
     -- check if encounter was a wipe
-    if (sucess == 0) then 
-        Print(encounterName, "Wipe.")
-        Print("Time:", GetEncounterTime(self.EncounterElapsedTimer))
-        return
-    end
-
-    -- filter encounters difficulty which we want to take screenshots.
-    if (EncounterDifficulty[difficultyID]) then
+    local isWipe = (success == 0)
+    if isWipe then 
+        self:Message(string.format("%s encounter wiped in %s", encounterName, encounterTime))
+    elseif EncounterDifficulty[difficultyID] then
         -- display encounter info
-        Print("Defeted", encounterName, difficulty, "(" .. groupSize .. "-man)")
-        Print("Date:", date("%m/%d/%y %H:%M:%S"))
-        Print("Time:", GetEncounterTime(self.EncounterElapsedTimer))
+        self:Message(string.format("Encounter defeated %s on %s (%d-man)", encounterName, difficulty, groupSize))
+        self:Message(string.format("Date: %s", date("%m/%d/%y %H:%M:%S")))
+        self:Message(string.format("Time: %s", encounterTime))
 
         -- take screenshot
         Wait(1, Screenshot)
     end
 end
 
-function ScreenShots:PLAYER_LEVEL_UP()
+function element_proto:PLAYER_LEVEL_UP()
     -- delay enough for the golden glow ends.
     Wait(2.7, Screenshot)
 end
+
+function element_proto:PLAYER_DEAD()
+    Wait(0.25, Screenshot)
+end
+
+function element_proto:SCREENSHOT_FAILED(...)
+    self:Print("ScreenShot failed")
+end
+
+function element_proto:SCREENSHOT_SUCCEEDED(...)
+    self:Print("ScreenShot taken")
+end
+
+function element_proto:GetEncounterTime(elapsed)
+    local minutes = math.ceil(elapsed / 60)
+    local seconds = math.ceil(elapsed % 60)
+    return string.format("%d minutes %d seconds", minutes, seconds)
+end
+
+function element_proto:Message(msg)
+    if self.cfg.messages then
+        DEFAULT_CHAT_FRAME:AddMessage(msg, 1.00, 1.00, 0.00)
+    end
+end
+
+function element_proto:Print(...)
+    print("|cffff8000ScreenShots|r", ...)
+end
+
+local frame = Mixin(CreateFrame("Frame"), element_proto)
+frame:RegisterEvent("PLAYER_LOGIN")
+frame:SetScript("OnEvent", frame.OnEvent)
+
+ns.ScreenShots = frame
+-- _G.ScreenShots = frame

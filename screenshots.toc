@@ -5,7 +5,7 @@
 ## Notes: Auto screenshot game events and achievements
 ## IconTexture: Interface\ICONS\Inv_misc_-selfiecamera_01
 
-## X-Website: https://github.com/wow-lua/screenshots
+## X-Website: https://github.com/lua-wow/screenshots
 ## X-Maintainer: Luaerror
 
 screenshots.lua

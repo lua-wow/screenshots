@@ -1,4 +1,4 @@
-## Interface: 11503, 20504, 30403, 40400, 100200, 110105
+## Interface: 11503, 20504, 30403, 40400, 100200, 110107
 ## Author: Luaerror
 ## Version: 1.1.0
 ## Title: |cffff8000ScreenShots|r

@@ -71,48 +71,10 @@ local delays = {
     DEFAULT = 1
 }
 
-local element_proto = {
-    options = {
-        ["enabled"] = true,             -- enables plugin.
-        ["achievements"] = true,        -- enables screenshots of earned achievements.
-        ["boss_kills"] = true,          -- enables screenshots of successful boss encounters.
-        ["challenge_mode"] = true,      -- enables screenshots of successful challenge modes / mythic keys.
-        ["levelup"] = true,             -- enables screenshots when player level up.
-        ["dead"] = true,                -- enables screenshots when player dies.
-        ["messages"] = {
-            ["enabled"] = true,         -- print messages when a screenshot event is triggered.
-            ["tracer"] = false
-        }
-    }
-}
-
-function element_proto:SetOptions(options)
-    if type(options) ~= "table" then return end
-
-    local function merge(a, b)
-        for k, v in next, b do
-            if type(v) == "table" and type(a[k]) == "table" then
-                merge(a[k], v)
-            else
-                a[k] = v
-            end
-        end
-    end
-
-    merge(self.options, options)
-    if self.__init then
-        self:Update()
-    end
-end
-
-function element_proto:Disable()
-    self.options.enabled = false
-    self:Update()
-end
+local element_proto = {}
 
 function element_proto:SendMessage(message)
-    local opts = self.options and self.options.messages or {}
-    if opts.enabled and type(message) == "string" then
+    if ScreenShots.messages and type(message) == "string" then
         ChatMessage(message)
     end
 end
@@ -122,19 +84,8 @@ function element_proto:TakeScreenshot(delay, message)
     TakeScreenshot(delay)
 end
 
-function element_proto:HookEvent(event, callback, condition)
-    if not events[event] then return end
-
-    local enable = true
-    if type(condition) == "boolean" then
-        enable = condition
-    elseif type(condition) == "string" then
-        enable = self.options and self.options[condition] or false
-    elseif type(condition) == "function" then
-        enable = pcall(condition, self.options or {})
-    end
-
-    if enable then
+function element_proto:HookEvent(event, callback, enable)
+    if events[event] and enable then
         self[event] = callback
         self:RegisterEvent(event)
     end
@@ -148,19 +99,18 @@ function element_proto:OnEnteringWorld()
         if (isRegistered) then
             self:UnregisterEvent("BOSS_KILL")
         end
-        self:HookEvent("ENCOUNTER_START", self.OnEncounterStart, "boss_kills")
-        self:HookEvent("ENCOUNTER_END", self.OnEncounterEnd, "boss_kills")
+        self:HookEvent("ENCOUNTER_START", self.OnEncounterStart, ScreenShots.boss_kills)
+        self:HookEvent("ENCOUNTER_END", self.OnEncounterEnd, ScreenShots.boss_kills)
     else
-        self:HookEvent("BOSS_KILL", self.OnBossKill, "boss_kills")
+        self:HookEvent("BOSS_KILL", self.OnBossKill, ScreenShots.boss_kills)
         self:UnregisterEvent("ENCOUNTER_START")
         self:UnregisterEvent("ENCOUNTER_END")
     end
 end
 
 function element_proto:OnAchievementEarned(achievementID, alreadyEarned)
-    local _, name, points, completed, _, _, _, _, _, _, _, isGuild, wasEarnedByMe, _, _ = GetAchievementInfo(achievementID)
+    local _, name, points, _, _, _, _, _, _, _, _, isGuild = GetAchievementInfo(achievementID)
     if not isGuild and not alreadyEarned then
-        print("ScreenShots", "alreadyEarned:", alreadyEarned, "wasEarnedByMe:", wasEarnedByMe)
         self:TakeScreenshot(delays.DEFAULT, "Achievement [" .. name .. "] earned (" .. points .. " points)")
     end
 end
@@ -184,8 +134,9 @@ function element_proto:OnEncounterStart(encounterID, encounterName, difficultyID
 end
 
 function element_proto:OnEncounterEnd(encounterID, encounterName, difficultyID, groupSize, success)
-    -- calculate total time until encounter wipe/success
-    local elapsed = self.encounter and (time() - (self.encounter.start or 0)) or nil
+    -- calculate total time until encounter wipe/success; unknown when ENCOUNTER_START was missed (/reload mid-fight)
+    local encounter = self.encounter
+    local elapsed = (encounter and encounter.id == encounterID) and (time() - encounter.start) or nil
     local encounterTime = self:GetEncounterTime(elapsed)
 
     -- check if encounter was a wipe
@@ -198,10 +149,12 @@ function element_proto:OnEncounterEnd(encounterID, encounterName, difficultyID, 
         self:TakeScreenshot(delays.DEFAULT, message)
     elseif EncounterDifficulty[difficultyID] then
         -- display encounter info
-        local difficulty, _, isHeroic, isChallengeMode, displayHeroic, displayMythic, _ = GetDifficultyInfo(difficultyID)
+        local difficulty = GetDifficultyInfo(difficultyID)
         self:SendMessage("Encounter defeated " .. encounterName .. " on " .. difficulty .. " (" .. groupSize .. "-man)")
         self:SendMessage("Date: " .. date("%m/%d/%y %H:%M:%S"))
-        self:SendMessage("Time: " .. encounterTime)
+        if (encounterTime) then
+            self:SendMessage("Time: " .. encounterTime)
+        end
 
         self:TakeScreenshot(delays.DEFAULT, "Encounter " .. encounterName .. " ended")
     end
@@ -224,34 +177,23 @@ function element_proto:OnScreenshotSucceeded(...)
     self:SendMessage("Screenshot Taken")
 end
 
-function element_proto:Update()
-    self:UnregisterAllEvents()
-
-    local opts = self.options or {}
-    if not opts.enabled then return end
-
-    -- self:UnregisterEvent("PLAYER_LOGIN")
-    self:HookEvent("PLAYER_ENTERING_WORLD", self.OnEnteringWorld, true)
-    self:HookEvent("ACHIEVEMENT_EARNED", self.OnAchievementEarned, "achievements")
-    self:HookEvent("CHALLENGE_MODE_COMPLETED", self.OnChallengeMode, "challenge_mode")
-    self:HookEvent("CHALLENGE_MODE_COMPLETED_REWARDS", self.OnChallengeMode, "challenge_mode")
-    self:HookEvent("PLAYER_LEVEL_UP", self.OnPlayerLevelUp, "levelup")
-    self:HookEvent("PLAYER_DEAD", self.OnPlayerDead, "dead")
-    self:HookEvent("SCREENSHOT_FAILED", self.OnScreenshotFailed, function (o) return o.messages and o.messages.tracer end)
-    self:HookEvent("SCREENSHOT_SUCCEEDED", self.OnScreenshotSucceeded, function (o) return o.messages and o.messages.tracer end)
-end
-
 function element_proto:OnEvent(event, ...)
     if type(self[event]) == "function" then
         self[event](self, ...)
     end
 end
 
+-- options are read once, after every addon (and its host) has loaded
 function element_proto:PLAYER_LOGIN()
-    if not self.__init then
-        self:Update()
-        self.__init = true
-    end
+    self:UnregisterEvent("PLAYER_LOGIN")
+    self:HookEvent("PLAYER_ENTERING_WORLD", self.OnEnteringWorld, true)
+    self:HookEvent("ACHIEVEMENT_EARNED", self.OnAchievementEarned, ScreenShots.achievements)
+    self:HookEvent("CHALLENGE_MODE_COMPLETED", self.OnChallengeMode, ScreenShots.challenge_mode)
+    self:HookEvent("CHALLENGE_MODE_COMPLETED_REWARDS", self.OnChallengeMode, ScreenShots.challenge_mode)
+    self:HookEvent("PLAYER_LEVEL_UP", self.OnPlayerLevelUp, ScreenShots.levelup)
+    self:HookEvent("PLAYER_DEAD", self.OnPlayerDead, ScreenShots.dead)
+    self:HookEvent("SCREENSHOT_FAILED", self.OnScreenshotFailed, ScreenShots.tracer)
+    self:HookEvent("SCREENSHOT_SUCCEEDED", self.OnScreenshotSucceeded, ScreenShots.tracer)
 end
 
 function element_proto:GetEncounterTime(elapsed)
@@ -259,13 +201,11 @@ function element_proto:GetEncounterTime(elapsed)
         return nil
     end
 
-    local minutes = math.ceil(elapsed / 60)
-    local seconds = math.ceil(elapsed % 60)
+    local minutes = math.floor(elapsed / 60)
+    local seconds = math.floor(elapsed % 60)
     return string.format("%d minutes %d seconds", minutes, seconds)
 end
 
 local frame = Mixin(CreateFrame("Frame"), element_proto)
 frame:RegisterEvent("PLAYER_LOGIN")
 frame:SetScript("OnEvent", frame.OnEvent)
-
-ScreenShots.Frame = frame
